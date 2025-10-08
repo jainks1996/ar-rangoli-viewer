@@ -1,0 +1,5 @@
+/* styles.css */
+:root { font-family: system-ui, Arial, sans-serif; }
+body { margin: 0; padding: 2rem; }
+h1 { margin: 0 0 1rem; }
+main { border: 1px dashed #999; padding: 1rem; border-radius: 8px; }
