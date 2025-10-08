@@ -1,229 +1,153 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AR Rangoli Viewer - Diwali Special</title>
-
-  <!-- A-Frame + AR.js -->
-  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
-
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rangoli AR — Floor Placement</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; overflow: hidden; }
-    .ui-overlay { position: fixed; top: 0; left: 0; right: 0; z-index: 999; background: linear-gradient(135deg,#667eea,#764ba2); padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,.1); }
-    .header { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; }
-    .title { color: #fff; font-size: 24px; font-weight: 700; text-shadow: 2px 2px 4px rgba(0,0,0,.2); }
-    .controls { display: flex; gap: 10px; align-items: center; }
-    .btn, .rangoli-selector { background: #fff; color: #764ba2; border: none; padding: 10px 20px; border-radius: 25px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
-    .info-panel { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.95); padding: 15px 25px; border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,.2); z-index: 998; text-align: center; }
-    .info-text { color: #764ba2; font-size: 14px; font-weight: 500; }
-    .diwali-badge { position: fixed; top: 80px; right: 20px; background: linear-gradient(45deg,#ff6b6b,#ffd93d); color: #fff; padding: 10px 20px; border-radius: 20px; font-weight: 700; box-shadow: 0 4px 10px rgba(0,0,0,.2); z-index: 997; }
-    .instructions { position: fixed; top: 130px; right: 20px; background: rgba(255,255,255,.95); padding: 15px; border-radius: 10px; max-width: 250px; z-index: 996; box-shadow: 0 4px 10px rgba(0,0,0,.1); }
-    .instructions h3 { color: #764ba2; margin-bottom: 10px; font-size: 16px; }
-    .instructions ul { color: #555; font-size: 14px; padding-left: 20px; }
+    :root { --gap: 12px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #000; color: #111; }
+    #overlay { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: var(--gap); z-index: 10; }
+    .btn { padding: 10px 14px; border: 0; border-radius: 999px; font-weight: 600; cursor: pointer; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+    .badge { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.9); padding: 8px 14px; border-radius: 999px; z-index: 10; font-weight: 600; }
+    canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
-  <div class="ui-overlay">
-    <div class="header">
-      <div class="title">🪔 AR Rangoli Viewer</div>
-      <div class="controls">
-        <select class="rangoli-selector" id="rangoliSelector">
-          <option value="pattern1">Floral Rangoli</option>
-          <option value="pattern2">Geometric Rangoli</option>
-          <option value="pattern3">Peacock Rangoli</option>
-          <option value="pattern4">Mandala Rangoli</option>
-          <option value="pattern5">Diya Rangoli</option>
-        </select>
-        <button class="btn" onclick="placeRangoli()">Place Rangoli</button>
-        <button class="btn" onclick="clearAllRangoli()">Clear All</button>
-        <button class="btn" onclick="captureScreen()">📸 Capture</button>
-      </div>
-    </div>
+  <div class="badge">Move your phone to find a surface • Tap to place • Auto mode sprinkles as you walk</div>
+  <div id="overlay">
+    <button id="autoBtn" class="btn">Auto Paint: Off</button>
+    <button id="placeBtn" class="btn">Place Rangoli</button>
+    <button id="clearBtn" class="btn">Clear</button>
   </div>
 
-  <div class="diwali-badge">✨ Happy Diwali! ✨</div>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { ARButton } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js";
+    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
 
-  <div class="instructions">
-    <h3>How to Use:</h3>
-    <ul>
-      <li>Allow camera access</li>
-      <li>Point camera at a <b>hiro marker</b></li>
-      <li>Select rangoli pattern</li>
-      <li>Tap "Place Rangoli"</li>
-    </ul>
-  </div>
+    let camera, scene, renderer;
+    let hitTestSource = null, localSpace, viewerSpace;
+    let reticle, rangoliBase = null;
+    let lastPlaced = 0, autoMode = false;
+    const INTERVAL = 1500; // ms between auto sprinkles
 
-  <div class="info-panel"><div class="info-text">Point your camera at a hiro marker and tap “Place Rangoli”.</div></div>
+    const autoBtn  = document.getElementById("autoBtn");
+    const placeBtn = document.getElementById("placeBtn");
+    const clearBtn = document.getElementById("clearBtn");
 
-  <!-- IMPORTANT: Add a marker and place your objects inside it -->
-  <a-scene
-    embedded
-    screenshot
-    arjs="sourceType: webcam; trackingMethod: best; detectionMode: mono; debugUIEnabled: false;"
-    renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true; alpha: true;">
+    init();
+    animate();
 
-    <a-assets>
-      <a-mixin id="rangoli-animation"
-               animation__rotate="property: rotation; to: 0 360 0; loop: true; dur: 20000; easing: linear"
-               animation__float="property: position; to: 0 0.1 0; dir: alternate; dur: 2000; loop: true; easing: easeInOutSine">
-      </a-mixin>
-    </a-assets>
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-    <!-- Marker anchor -->
-    <a-marker preset="hiro" id="marker">
-      <!-- Put rangolis under the marker so they stay attached -->
-      <a-entity id="rangoli-container"></a-entity>
-    </a-marker>
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
 
-    <a-entity camera></a-entity>
-  </a-scene>
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.0));
 
-  <script>
-    let rangoliCount = 0;
+      // Reticle (shows where the plane is)
+      const ring = new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2);
+      reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial());
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
 
-    // Show a helpful message when marker is found/lost
-    const marker = document.getElementById('marker');
-    const infoText = document.querySelector('.info-text');
-    marker.addEventListener('markerFound', () => infoText.textContent = 'Marker found! Tap "Place Rangoli".');
-    marker.addEventListener('markerLost',  () => infoText.textContent = 'Point your camera at the hiro marker.');
+      // Load your rangoli model (put it in /models/rangoli.glb)
+      const loader = new GLTFLoader();
+      loader.load(
+        "models/rangoli.glb",
+        (gltf) => {
+          rangoliBase = gltf.scene;
+          rangoliBase.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; }});
+          rangoliBase.scale.setScalar(0.6);   // change size if needed
+          console.log("Rangoli model loaded.");
+        },
+        undefined,
+        (err) => console.warn("Could not load models/rangoli.glb — place your file there.", err)
+      );
 
-    function createRangoliPattern(type, parent) {
-      // parent is the rangoli <a-entity> under the marker
-      switch(type) {
-        case 'pattern1': createFloralRangoli(parent); break;
-        case 'pattern2': createGeometricRangoli(parent); break;
-        case 'pattern3': createPeacockRangoli(parent); break;
-        case 'pattern4': createMandalaRangoli(parent); break;
-        case 'pattern5': createDiyaRangoli(parent); break;
-      }
-      parent.setAttribute('animation__rotate', { property: 'rotation', to: '0 360 0', loop: true, dur: 30000, easing: 'linear' });
-    }
+      // AR button (requests camera + hit-test)
+      document.body.appendChild(ARButton.createButton(renderer, {
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay"],
+        domOverlay: { root: document.body }
+      }));
 
-    function createFloralRangoli(parent) {
-      const center = document.createElement('a-circle');
-      center.setAttribute('radius', '0.12');
-      center.setAttribute('color', '#ff6b6b');
-      center.setAttribute('rotation', '-90 0 0');
-      center.setAttribute('opacity', '0.9');
-      parent.appendChild(center);
+      renderer.xr.addEventListener("sessionstart", onSessionStart);
+      renderer.xr.addEventListener("sessionend", () => { hitTestSource = null; });
 
-      for (let i = 0; i < 8; i++) {
-        const angle = (i * 45) * Math.PI/180;
-        const petal = document.createElement('a-circle');
-        petal.setAttribute('radius', '0.08');
-        petal.setAttribute('color', i % 2 === 0 ? '#ffd93d' : '#ff9ff3');
-        petal.setAttribute('position', { x: Math.cos(angle) * 0.25, y: 0, z: Math.sin(angle) * 0.25 });
-        petal.setAttribute('rotation', '-90 0 0');
-        petal.setAttribute('opacity', '0.85');
-        parent.appendChild(petal);
-      }
-    }
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
 
-    function createGeometricRangoli(parent) {
-      const colors = ['#ee5a6f', '#f8b500', '#4a7c7e', '#8b5cf6'];
-      for (let i = 0; i < 6; i++) {
-        const angle = (i * 60) * Math.PI/180;
-        const tri = document.createElement('a-triangle');
-        tri.setAttribute('color', colors[i % colors.length]);
-        tri.setAttribute('position', { x: Math.cos(angle) * 0.2, y: 0, z: Math.sin(angle) * 0.2 });
-        tri.setAttribute('rotation', `-90 0 ${i * 60}`);
-        tri.setAttribute('scale', '0.16 0.16 0.16');
-        tri.setAttribute('opacity', '0.85');
-        parent.appendChild(tri);
-      }
-    }
+      // UI actions
+      autoBtn.addEventListener("click", () => {
+        autoMode = !autoMode;
+        autoBtn.textContent = `Auto Paint: ${autoMode ? "On" : "Off"}`;
+      });
 
-    function createPeacockRangoli(parent) {
-      const body = document.createElement('a-sphere');
-      body.setAttribute('radius', '0.12');
-      body.setAttribute('color', '#4a7c7e');
-      body.setAttribute('opacity', '0.9');
-      parent.appendChild(body);
+      placeBtn.addEventListener("click", () => {
+        if (reticle.visible) placeFromReticle();
+      });
 
-      for (let i = 0; i < 5; i++) {
-        const angle = (i * 36 - 90) * Math.PI/180;
-        const feather = document.createElement('a-cylinder');
-        feather.setAttribute('radius', '0.02');
-        feather.setAttribute('height', '0.24');
-        feather.setAttribute('color', i % 2 === 0 ? '#22d3ee' : '#10b981');
-        feather.setAttribute('position', { x: Math.cos(angle) * 0.22, y: 0.12, z: Math.sin(angle) * 0.22 });
-        feather.setAttribute('rotation', `0 0 ${i * 36 - 90}`);
-        feather.setAttribute('opacity', '0.85');
-        parent.appendChild(feather);
-      }
-    }
+      clearBtn.addEventListener("click", () => {
+        // remove all children tagged as rangoli
+        scene.children.filter(c => c.userData?.type === "rangoli").forEach(c => scene.remove(c));
+      });
 
-    function createMandalaRangoli(parent) {
-      const radii = [0.24, 0.18, 0.12, 0.06];
-      const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#fdcb6e'];
-      radii.forEach((radius, i) => {
-        const ring = document.createElement('a-ring');
-        ring.setAttribute('radius-inner', i > 0 ? radii[i] - 0.02 : 0);
-        ring.setAttribute('radius-outer', radius);
-        ring.setAttribute('color', colors[i]);
-        ring.setAttribute('rotation', '-90 0 0');
-        ring.setAttribute('opacity', '0.75');
-        parent.appendChild(ring);
+      // Also allow tap anywhere to place
+      document.body.addEventListener("pointerdown", () => {
+        if (reticle.visible) placeFromReticle();
       });
     }
 
-    function createDiyaRangoli(parent) {
-      const base = document.createElement('a-cone');
-      base.setAttribute('radius-bottom', '0.12');
-      base.setAttribute('radius-top', '0.08');
-      base.setAttribute('height', '0.08');
-      base.setAttribute('color', '#d97706');
-      base.setAttribute('opacity', '0.9');
-      base.setAttribute('rotation', '-90 0 0'); // lay flat
-      parent.appendChild(base);
-
-      const flame = document.createElement('a-cone');
-      flame.setAttribute('radius-bottom', '0.04');
-      flame.setAttribute('radius-top', '0');
-      flame.setAttribute('height', '0.12');
-      flame.setAttribute('color', '#fbbf24');
-      flame.setAttribute('position', '0 0.12 0');
-      flame.setAttribute('opacity', '0.95');
-      flame.setAttribute('animation__flicker', { property: 'scale', to: '1.1 1.2 1.1', dir: 'alternate', dur: 500, loop: true, easing: 'easeInOutSine' });
-      parent.appendChild(flame);
+    async function onSessionStart() {
+      const session = renderer.xr.getSession();
+      viewerSpace = await session.requestReferenceSpace("viewer");
+      localSpace  = await session.requestReferenceSpace("local");
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
     }
 
-    function placeRangoli() {
-      const selected = document.getElementById('rangoliSelector').value;
-
-      // Place within ~40 cm of marker center
-      const x = (Math.random() - 0.5) * 0.4;
-      const z = (Math.random() - 0.5) * 0.4;
-
-      const container = document.getElementById('rangoli-container');
-      const rangoli = document.createElement('a-entity');
-      rangoli.setAttribute('position', `${x} 0 ${z}`);
-      createRangoliPattern(selected, rangoli);
-      container.appendChild(rangoli);
-
-      rangoliCount++;
-      infoText.textContent = `Rangoli placed! Total: ${rangoliCount}.`;
+    function placeFromReticle() {
+      if (!rangoliBase) return;
+      const model = rangoliBase.clone(true);
+      model.position.setFromMatrixPosition(reticle.matrix);
+      model.quaternion.setFromRotationMatrix(reticle.matrix);
+      model.userData.type = "rangoli";
+      // add subtle random rotation for variety
+      model.rotateY(Math.random() * Math.PI * 2);
+      scene.add(model);
+      lastPlaced = performance.now();
     }
 
-    function clearAllRangoli() {
-      document.getElementById('rangoli-container').innerHTML = '';
-      rangoliCount = 0;
-      infoText.textContent = 'All rangoli cleared. Place new ones!';
+    function animate() {
+      renderer.setAnimationLoop(render);
     }
 
-    function captureScreen() {
-      const scene = document.querySelector('a-scene');
-      // Use the screenshot *system* (reliable)
-      const canvas = scene.systems.screenshot.getCanvas('perspective');
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png');
-      link.download = `ar-rangoli-${Date.now()}.png`;
-      link.click();
-      infoText.textContent = 'Screenshot captured! Check your downloads.';
+    function render(time, frame) {
+      if (frame && hitTestSource && localSpace) {
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length) {
+          const pose = hits[0].getPose(localSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+
+          if (autoMode && performance.now() - lastPlaced > INTERVAL) {
+            placeFromReticle();
+          }
+        } else {
+          reticle.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
     }
   </script>
 </body>
