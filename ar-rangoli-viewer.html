@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AR Rangoli Viewer — Floor Detection</title>
+
+  <!-- Load Three.js & helpers -->
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { ARButton } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js";
+
+    let scene, camera, renderer;
+    let hitTestSource = null, localSpace, viewerSpace;
+    let reticle;
+    let lastPlaced = 0;
+    const INTERVAL = 1500; // ms between auto-rangoli placement
+    let autoMode = false;
+
+    const colors = ['#ff6b6b', '#ffd93d', '#4ecdc4', '#8b5cf6'];
+
+    init();
+    animate();
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1));
+
+      // Reticle to show detected plane
+      const ring = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2);
+      reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: 0x00ffaa }));
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      // AR Button
+      document.body.appendChild(ARButton.createButton(renderer, {
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay"],
+        domOverlay: { root: document.body }
+      }));
+
+      renderer.xr.addEventListener("sessionstart", onSessionStart);
+      renderer.xr.addEventListener("sessionend", () => { hitTestSource = null; });
+
+      window.addEventListener("resize", onResize);
+
+      // UI buttons
+      const autoBtn = document.getElementById("autoBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const placeBtn = document.getElementById("placeBtn");
+
+      autoBtn.onclick = () => {
+        autoMode = !autoMode;
+        autoBtn.textContent = `Auto Paint: ${autoMode ? "On" : "Off"}`;
+      };
+
+      clearBtn.onclick = clearScene;
+      placeBtn.onclick = () => {
+        if (reticle.visible) placeRangoli();
+      };
+
+      document.body.addEventListener("pointerdown", () => {
+        if (reticle.visible) placeRangoli();
+      });
+    }
+
+    async function onSessionStart() {
+      const session = renderer.xr.getSession();
+      viewerSpace = await session.requestReferenceSpace("viewer");
+      localSpace = await session.requestReferenceSpace("local");
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function createRangoli() {
+      // Simple procedural rangoli pattern
+      const group = new THREE.Group();
+      const center = new THREE.Mesh(
+        new THREE.CircleGeometry(0.08, 32),
+        new THREE.MeshBasicMaterial({ color: 0xff6b6b })
+      );
+      center.rotation.x = -Math.PI / 2;
+      group.add(center);
+
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * 60) * Math.PI / 180;
+        const petal = new THREE.Mesh(
+          new THREE.CircleGeometry(0.05, 32),
+          new THREE.MeshBasicMaterial({ color: colors[i % colors.length] })
+        );
+        petal.position.set(Math.cos(angle) * 0.15, 0.001, Math.sin(angle) * 0.15);
+        petal.rotation.x = -Math.PI / 2;
+        group.add(petal);
+      }
+      group.userData.type = "rangoli";
+      return group;
+    }
+
+    function placeRangoli() {
+      const rangoli = createRangoli();
+      rangoli.position.setFromMatrixPosition(reticle.matrix);
+      rangoli.quaternion.setFromRotationMatrix(reticle.matrix);
+      rangoli.rotation.x = -Math.PI / 2;
+      scene.add(rangoli);
+      lastPlaced = performance.now();
+    }
+
+    function clearScene() {
+      scene.children = scene.children.filter(obj => {
+        if (obj.userData?.type === "rangoli") {
+          scene.remove(obj);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    function render(t, frame) {
+      if (frame && hitTestSource && localSpace) {
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length) {
+          const pose = hits[0].getPose(localSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+
+          if (autoMode && performance.now() - lastPlaced > INTERVAL) {
+            placeRangoli();
+          }
+        } else {
+          reticle.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
+    }
+  </script>
+
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+    #ui { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; z-index: 10; }
+    button { padding: 10px 16px; border: none; border-radius: 999px; background: #fff; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,0.2); cursor: pointer; }
+    .hint { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.9); padding: 8px 16px; border-radius: 999px; font-weight: 600; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div class="hint">Move your phone to scan the floor • Tap to place rangoli</div>
+  <div id="ui">
+    <button id="autoBtn">Auto Paint: Off</button>
+    <button id="placeBtn">Place Rangoli</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+</body>
+</html>
