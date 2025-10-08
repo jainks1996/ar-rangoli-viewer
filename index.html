@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Rangoli Viewer - Diwali Special</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/aframe/build/aframe-ar.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 999;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .title {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            background: white;
+            color: #764ba2;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .rangoli-selector {
+            background: white;
+            color: #764ba2;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .info-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 25px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 998;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-text {
+            color: #764ba2;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            z-index: 1000;
+            background: rgba(118, 75, 162, 0.9);
+            padding: 20px 40px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .diwali-badge {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(45deg, #ff6b6b, #ffd93d);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            z-index: 997;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .instructions {
+            position: fixed;
+            top: 130px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 250px;
+            z-index: 996;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        .instructions h3 {
+            color: #764ba2;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .instructions ul {
+            color: #555;
+            font-size: 14px;
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+
+        a-scene {
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .ar-video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <div class="header">
+            <div class="title">🪔 AR Rangoli Viewer</div>
+            <div class="controls">
+                <select class="rangoli-selector" id="rangoliSelector">
+                    <option value="pattern1">Floral Rangoli</option>
+                    <option value="pattern2">Geometric Rangoli</option>
+                    <option value="pattern3">Peacock Rangoli</option>
+                    <option value="pattern4">Mandala Rangoli</option>
+                    <option value="pattern5">Diya Rangoli</option>
+                </select>
+                <button class="btn" onclick="placeRangoli()">Place Rangoli</button>
+                <button class="btn" onclick="clearAllRangoli()">Clear All</button>
+                <button class="btn" onclick="captureScreen()">📸 Capture</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="diwali-badge">✨ Happy Diwali! ✨</div>
+
+    <div class="instructions">
+        <h3>How to Use:</h3>
+        <ul>
+            <li>Allow camera access</li>
+            <li>Point camera at floor</li>
+            <li>Select rangoli pattern</li>
+            <li>Tap "Place Rangoli"</li>
+            <li>Move camera to see AR effect</li>
+        </ul>
+    </div>
+
+    <div class="info-panel">
+        <div class="info-text">Point your camera at the floor and tap "Place Rangoli" to add virtual rangoli</div>
+    </div>
+
+    <div class="loading" id="loading">Initializing AR...</div>
+
+    <a-scene
+        embedded
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
+        vr-mode-ui="enabled: false"
+        renderer="logarithmicDepthBuffer: true; precision: medium; antialias: true; alpha: true;">
+        
+        <a-assets>
+            <!-- Define rangoli patterns as primitives -->
+            <a-mixin id="rangoli-animation"
+                animation__rotate="property: rotation; to: 0 360 0; loop: true; dur: 20000; easing: linear"
+                animation__float="property: position; to: 0 0.1 0; dir: alternate; dur: 2000; loop: true; easing: easeInOutSine">
+            </a-mixin>
+        </a-assets>
+
+        <!-- Camera with marker detection -->
+        <a-entity camera></a-entity>
+
+        <!-- Container for dynamically placed rangolis -->
+        <a-entity id="rangoli-container"></a-entity>
+    </a-scene>
+
+    <script>
+        let rangoliCount = 0;
+        let rangoliPositions = [];
+
+        // Initialize AR when page loads
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+            }, 2000);
+        });
+
+        // Function to create rangoli pattern
+        function createRangoliPattern(type, position) {
+            const container = document.getElementById('rangoli-container');
+            const rangoli = document.createElement('a-entity');
+            rangoli.setAttribute('id', `rangoli-${rangoliCount}`);
+            rangoli.setAttribute('position', position);
+            
+            switch(type) {
+                case 'pattern1': // Floral
+                    createFloralRangoli(rangoli);
+                    break;
+                case 'pattern2': // Geometric
+                    createGeometricRangoli(rangoli);
+                    break;
+                case 'pattern3': // Peacock
+                    createPeacockRangoli(rangoli);
+                    break;
+                case 'pattern4': // Mandala
+                    createMandalaRangoli(rangoli);
+                    break;
+                case 'pattern5': // Diya
+                    createDiyaRangoli(rangoli);
+                    break;
+            }
+            
+            // Add animation
+            rangoli.setAttribute('animation__rotate', {
+                property: 'rotation',
+                to: '0 360 0',
+                loop: true,
+                dur: 30000,
+                easing: 'linear'
+            });
+            
+            container.appendChild(rangoli);
+            rangoliCount++;
+        }
+
+        function createFloralRangoli(parent) {
+            // Center circle
+            const center = document.createElement('a-circle');
+            center.setAttribute('radius', '0.3');
+            center.setAttribute('color', '#ff6b6b');
+            center.setAttribute('rotation', '-90 0 0');
+            center.setAttribute('opacity', '0.8');
+            parent.appendChild(center);
+            
+            // Petals
+            for (let i = 0; i < 8; i++) {
+                const angle = (i * 45) * (Math.PI / 180);
+                const petal = document.createElement('a-circle');
+                petal.setAttribute('radius', '0.2');
+                petal.setAttribute('color', i % 2 === 0 ? '#ffd93d' : '#ff9ff3');
+                petal.setAttribute('position', {
+                    x: Math.cos(angle) * 0.5,
+                    y: 0,
+                    z: Math.sin(angle) * 0.5
+                });
+                petal.setAttribute('rotation', '-90 0 0');
+                petal.setAttribute('opacity', '0.8');
+                parent.appendChild(petal);
+            }
+        }
+
+        function createGeometricRangoli(parent) {
+            // Create triangular pattern
+            const colors = ['#ee5a6f', '#f8b500', '#4a7c7e', '#8b5cf6'];
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * 60) * (Math.PI / 180);
+                const triangle = document.createElement('a-triangle');
+                triangle.setAttribute('color', colors[i % colors.length]);
+                triangle.setAttribute('position', {
+                    x: Math.cos(angle) * 0.4,
+                    y: 0,
+                    z: Math.sin(angle) * 0.4
+                });
+                triangle.setAttribute('rotation', `-90 0 ${i * 60}`);
+                triangle.setAttribute('scale', '0.3 0.3 0.3');
+                triangle.setAttribute('opacity', '0.8');
+                parent.appendChild(triangle);
+            }
+        }
+
+        function createPeacockRangoli(parent) {
+            // Body
+            const body = document.createElement('a-sphere');
+            body.setAttribute('radius', '0.3');
+            body.setAttribute('color', '#4a7c7e');
+            body.setAttribute('opacity', '0.8');
+            parent.appendChild(body);
+            
+            // Feathers
+            for (let i = 0; i < 5; i++) {
+                const angle = (i * 36 - 90) * (Math.PI / 180);
+                const feather = document.createElement('a-cylinder');
+                feather.setAttribute('radius', '0.05');
+                feather.setAttribute('height', '0.6');
+                feather.setAttribute('color', i % 2 === 0 ? '#22d3ee' : '#10b981');
+                feather.setAttribute('position', {
+                    x: Math.cos(angle) * 0.5,
+                    y: 0.3,
+                    z: Math.sin(angle) * 0.5
+                });
+                feather.setAttribute('rotation', `0 0 ${i * 36 - 90}`);
+                feather.setAttribute('opacity', '0.8');
+                parent.appendChild(feather);
+            }
+        }
+
+        function createMandalaRangoli(parent) {
+            // Create concentric circles
+            const radii = [0.6, 0.45, 0.3, 0.15];
+            const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#fdcb6e'];
+            
+            radii.forEach((radius, index) => {
+                const ring = document.createElement('a-ring');
+                ring.setAttribute('radius-inner', index > 0 ? radii[index] - 0.05 : 0);
+                ring.setAttribute('radius-outer', radius);
+                ring.setAttribute('color', colors[index]);
+                ring.setAttribute('rotation', '-90 0 0');
+                ring.setAttribute('opacity', '0.7');
+                parent.appendChild(ring);
+            });
+        }
+
+        function createDiyaRangoli(parent) {
+            // Diya base
+            const base = document.createElement('a-cone');
+            base.setAttribute('radius-bottom', '0.3');
+            base.setAttribute('radius-top', '0.2');
+            base.setAttribute('height', '0.2');
+            base.setAttribute('color', '#d97706');
+            base.setAttribute('position', '0 0 0');
+            base.setAttribute('opacity', '0.8');
+            parent.appendChild(base);
+            
+            // Flame
+            const flame = document.createElement('a-cone');
+            flame.setAttribute('radius-bottom', '0.1');
+            flame.setAttribute('radius-top', '0');
+            flame.setAttribute('height', '0.3');
+            flame.setAttribute('color', '#fbbf24');
+            flame.setAttribute('position', '0 0.25 0');
+            flame.setAttribute('opacity', '0.9');
+            flame.setAttribute('animation__flicker', {
+                property: 'scale',
+                to: '1.1 1.2 1.1',
+                dir: 'alternate',
+                dur: 500,
+                loop: true,
+                easing: 'easeInOutSine'
+            });
+            parent.appendChild(flame);
+        }
+
+        function placeRangoli() {
+            const selector = document.getElementById('rangoliSelector');
+            const selectedPattern = selector.value;
+            
+            // Generate random position near camera view
+            const x = (Math.random() - 0.5) * 4;
+            const z = -2 - Math.random() * 3;
+            const position = `${x} 0 ${z}`;
+            
+            createRangoliPattern(selectedPattern, position);
+            rangoliPositions.push(position);
+            
+            // Update info panel
+            const infoText = document.querySelector('.info-text');
+            infoText.textContent = `Rangoli placed! Total: ${rangoliCount}. Move your camera to see the AR effect!`;
+        }
+
+        function clearAllRangoli() {
+            const container = document.getElementById('rangoli-container');
+            container.innerHTML = '';
+            rangoliCount = 0;
+            rangoliPositions = [];
+            
+            const infoText = document.querySelector('.info-text');
+            infoText.textContent = 'All rangoli cleared. Place new ones to decorate your space!';
+        }
+
+        function captureScreen() {
+            const scene = document.querySelector('a-scene');
+            const canvas = scene.components.screenshot.getCanvas('perspective');
+            const link = document.createElement('a');
+            link.href = canvas.toDataURL('image/png');
+            link.download = `ar-rangoli-${Date.now()}.png`;
+            link.click();
+            
+            const infoText = document.querySelector('.info-text');
+            infoText.textContent = 'Screenshot captured! Check your downloads.';
+        }
+
+        // Handle camera permissions
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(stream) {
+                console.log('Camera access granted');
+            })
+            .catch(function(err) {
+                alert('Camera access is required for AR experience. Please grant camera permissions and refresh the page.');
+            });
+    </script>
+</body>
+</html>
