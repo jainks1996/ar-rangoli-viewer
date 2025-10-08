@@ -19,7 +19,7 @@ An interactive web-based Augmented Reality (AR) application that lets you place 
 
 ## 🚀 Live Demo
 
-Visit: [https://yourusername.github.io/ar-rangoli-viewer/](https://yourusername.github.io/ar-rangoli-viewer/)
+Visit: [https://jainks1996.github.io/ar-rangoli-viewer/](https://jainks1996.github.io/ar-rangoli-viewer/)
 
 ## 📱 System Requirements
 
@@ -39,7 +39,7 @@ Visit: [https://yourusername.github.io/ar-rangoli-viewer/](https://yourusername.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ar-rangoli-viewer.git
+git clone https://github.com/jainks1996/ar-rangoli-viewer.git
 cd ar-rangoli-viewer
 ```
 
