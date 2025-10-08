@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rangoli AR — Floor Placement</title>
+  <style>
+    :root { --gap: 12px; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #000; color: #111; }
+    #overlay { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: var(--gap); z-index: 10; }
+    .btn { padding: 10px 14px; border: 0; border-radius: 999px; font-weight: 600; cursor: pointer; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+    .badge { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.9); padding: 8px 14px; border-radius: 999px; z-index: 10; font-weight: 600; }
+    canvas { display: block; position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div class="badge">Move your phone to find a surface • Tap to place • Auto mode sprinkles as you walk</div>
+  <div id="overlay">
+    <button id="autoBtn" class="btn">Auto Paint: Off</button>
+    <button id="placeBtn" class="btn">Place Rangoli</button>
+    <button id="clearBtn" class="btn">Clear</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+    import { ARButton } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js";
+    import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+    let camera, scene, renderer;
+    let hitTestSource = null, localSpace, viewerSpace;
+    let reticle, rangoliBase = null;
+    let lastPlaced = 0, autoMode = false;
+    const INTERVAL = 1500; // ms between auto sprinkles
+
+    const autoBtn  = document.getElementById("autoBtn");
+    const placeBtn = document.getElementById("placeBtn");
+    const clearBtn = document.getElementById("clearBtn");
+
+    init();
+    animate();
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.0));
+
+      // Reticle (shows where the plane is)
+      const ring = new THREE.RingGeometry(0.12, 0.15, 32).rotateX(-Math.PI/2);
+      reticle = new THREE.Mesh(ring, new THREE.MeshBasicMaterial());
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      // Load your rangoli model (put it in /models/rangoli.glb)
+      const loader = new GLTFLoader();
+      loader.load(
+        "models/rangoli.glb",
+        (gltf) => {
+          rangoliBase = gltf.scene;
+          rangoliBase.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; }});
+          rangoliBase.scale.setScalar(0.6);   // change size if needed
+          console.log("Rangoli model loaded.");
+        },
+        undefined,
+        (err) => console.warn("Could not load models/rangoli.glb — place your file there.", err)
+      );
+
+      // AR button (requests camera + hit-test)
+      document.body.appendChild(ARButton.createButton(renderer, {
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay"],
+        domOverlay: { root: document.body }
+      }));
+
+      renderer.xr.addEventListener("sessionstart", onSessionStart);
+      renderer.xr.addEventListener("sessionend", () => { hitTestSource = null; });
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // UI actions
+      autoBtn.addEventListener("click", () => {
+        autoMode = !autoMode;
+        autoBtn.textContent = `Auto Paint: ${autoMode ? "On" : "Off"}`;
+      });
+
+      placeBtn.addEventListener("click", () => {
+        if (reticle.visible) placeFromReticle();
+      });
+
+      clearBtn.addEventListener("click", () => {
+        // remove all children tagged as rangoli
+        scene.children.filter(c => c.userData?.type === "rangoli").forEach(c => scene.remove(c));
+      });
+
+      // Also allow tap anywhere to place
+      document.body.addEventListener("pointerdown", () => {
+        if (reticle.visible) placeFromReticle();
+      });
+    }
+
+    async function onSessionStart() {
+      const session = renderer.xr.getSession();
+      viewerSpace = await session.requestReferenceSpace("viewer");
+      localSpace  = await session.requestReferenceSpace("local");
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+    }
+
+    function placeFromReticle() {
+      if (!rangoliBase) return;
+      const model = rangoliBase.clone(true);
+      model.position.setFromMatrixPosition(reticle.matrix);
+      model.quaternion.setFromRotationMatrix(reticle.matrix);
+      model.userData.type = "rangoli";
+      // add subtle random rotation for variety
+      model.rotateY(Math.random() * Math.PI * 2);
+      scene.add(model);
+      lastPlaced = performance.now();
+    }
+
+    function animate() {
+      renderer.setAnimationLoop(render);
+    }
+
+    function render(time, frame) {
+      if (frame && hitTestSource && localSpace) {
+        const hits = frame.getHitTestResults(hitTestSource);
+        if (hits.length) {
+          const pose = hits[0].getPose(localSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+
+          if (autoMode && performance.now() - lastPlaced > INTERVAL) {
+            placeFromReticle();
+          }
+        } else {
+          reticle.visible = false;
+        }
+      }
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
